@@ -1,8 +1,35 @@
 import express from 'express';
 import { protect, authorize } from '../middleware/auth.middleware.js';
 import Intern from '../models/intern.model.js';
+import User from '../models/user.model.js';
 
 const router = express.Router();
+
+// @route   GET /api/interns/profile
+// @desc    Get intern profile
+// @access  Private
+router.get('/profile', protect, authorize('intern'), async (req, res) => {
+  try {
+    const user = await User.findById(req.user._id).select('-password');
+    const intern = await Intern.findOne({ user: req.user._id });
+    
+    if (!intern) {
+      return res.status(404).json({ message: 'Intern profile not found' });
+    }
+
+    res.json({
+      ...user.toObject(),
+      schoolName: intern.schoolName,
+      currentYear: intern.currentYear,
+      interests: intern.interests,
+      skills: intern.skills,
+      studentId: intern.studentId,
+      resume: intern.resume
+    });
+  } catch (error) {
+    res.status(400).json({ message: error.message });
+  }
+});
 
 // @route   GET /api/interns
 // @desc    Get all interns

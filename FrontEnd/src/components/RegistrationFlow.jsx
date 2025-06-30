@@ -96,71 +96,108 @@ const RegistrationFlow = ({ userType, onComplete, onBack }) => {
       // Create FormData object
       const formDataObj = new FormData();
       
-      // Add the registration data
-      const registrationData = {
-        ...formData,
-        userType,
-        occupation: formData.occupation || 'Not Specified',
-        companyName: formData.companyName || '',
-        preferredLanguages: formData.preferredLanguages || ['English'],
-        budget: formData.budget || 0,
-        preferredLocation: formData.preferredLocation || formData.city,
-        caseType: formData.caseType || 'civil'
-      };
+      // Append all form fields directly (except files)
+      Object.keys(formData).forEach(key => {
+        // Skip file fields as they will be handled separately
+        if (!['idProofFront', 'idProofBack', 'lawDegree', 'studentId', 'resume'].includes(key)) {
+          // Handle arrays and objects by converting to JSON string
+          if (typeof formData[key] === 'object' && formData[key] !== null) {
+            formDataObj.append(key, JSON.stringify(formData[key]));
+          } else {
+            formDataObj.append(key, formData[key] || '');
+          }
+        }
+      });
 
-      // Remove file objects from registration data before stringifying
-      const dataToSend = { ...registrationData };
-      delete dataToSend.idProofFront;
-      delete dataToSend.idProofBack;
-      delete dataToSend.lawDegree;
-      delete dataToSend.studentId;
-      delete dataToSend.resume;
+      // Add userType
+      formDataObj.append('userType', userType);
 
-      console.log('Registration data being sent:', dataToSend);
-      
-      formDataObj.append('data', JSON.stringify(dataToSend));
-      
-      // Add files if they exist
-      if (formData.idProofFront) {
-        formDataObj.append('idProofFront', formData.idProofFront);
-      }
-      if (formData.idProofBack) {
-        formDataObj.append('idProofBack', formData.idProofBack);
-      }
-      if (formData.lawDegree) {
-        formDataObj.append('lawDegree', formData.lawDegree);
-      }
-      if (formData.studentId) {
-        formDataObj.append('studentId', formData.studentId);
-      }
-      if (formData.resume) {
-        formDataObj.append('resume', formData.resume);
-      }
-
-      console.log('Files being sent:', {
+      // Append files with proper validation
+      const fileFields = {
         idProofFront: formData.idProofFront,
         idProofBack: formData.idProofBack,
         lawDegree: formData.lawDegree,
         studentId: formData.studentId,
         resume: formData.resume
+      };
+
+      // Validate required files based on userType
+      if (userType === 'advocate' && (!fileFields.idProofFront || !fileFields.lawDegree)) {
+        throw new Error('ID Proof and Law Degree are required for advocates');
+      }
+
+      if (userType === 'intern' && (!fileFields.idProofFront || !fileFields.studentId)) {
+        throw new Error('ID Proof and Student ID are required for interns');
+      }
+
+      // Append files if they exist
+      Object.entries(fileFields).forEach(([fieldName, file]) => {
+        if (file) {
+          // Validate file size (5MB limit)
+          if (file.size > 5 * 1024 * 1024) {
+            throw new Error(`${fieldName} size should be less than 5MB`);
+          }
+          formDataObj.append(fieldName, file);
+        }
       });
 
+      // Make the API call
       const response = await fetch(API_ENDPOINTS.REGISTER, {
         method: 'POST',
         body: formDataObj,
       });
 
+      const data = await response.json();
+
       if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.message || 'Registration failed');
+        throw new Error(data.message || 'Registration failed');
       }
 
-      const data = await response.json();
+      // Show success message
       toast.success('Registration successful! Please login to continue.');
       
-      // Instead of storing token, redirect to login
+      // Clear form and files
+      setFormData({
+        firstName: '',
+        lastName: '',
+        email: '',
+        password: '',
+        mobile: '',
+        address: '',
+        city: '',
+        state: '',
+        pincode: '',
+        idType: '',
+        idProofFront: null,
+        idProofBack: null,
+        lawDegree: null,
+        studentId: null,
+        resume: null,
+        barCouncilId: '',
+        schoolName: '',
+        specialization: '',
+        experience: '',
+        fees: '',
+        bio: '',
+        occupation: '',
+        companyName: '',
+        preferredLanguages: ['English'],
+        budget: 0,
+        preferredLocation: '',
+        caseType: 'civil'
+      });
+      
+      setFiles({
+        governmentId: null,
+        governmentIdBack: null,
+        degreeCertificate: null,
+        studentId: null,
+        resume: null
+      });
+
+      // Navigate to login
       if (onComplete) {
-        onComplete(); // This should navigate to login page
+        onComplete();
       }
     } catch (error) {
       console.error('Registration error:', error);
@@ -172,68 +209,229 @@ const RegistrationFlow = ({ userType, onComplete, onBack }) => {
 
   const validateStep = (currentStep) => {
     const newErrors = {};
-    console.log('Validating step:', currentStep);
-    console.log('Current form data:', formData);
-    console.log('Current files:', files);
+    
+    // Validation helper functions
+    const isValidEmail = (email) => {
+      return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+    };
 
+    const isValidMobile = (mobile) => {
+      return /^\d{10}$/.test(mobile);
+    };
+
+    const isValidPincode = (pincode) => {
+      return /^\d{6}$/.test(pincode);
+    };
+
+    const isValidPassword = (password) => {
+      // At least 8 characters, 1 uppercase, 1 lowercase, 1 number
+      return /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{8,}$/.test(password);
+    };
+
+    const validateFileSize = (file) => {
+      return file && file.size <= 5 * 1024 * 1024; // 5MB limit
+    };
+
+    const validateFileType = (file, allowedTypes) => {
+      return file && allowedTypes.includes(file.type);
+    };
+
+    // Step 1: Personal Information
     if (currentStep === 1) {
-      if (!formData.firstName) newErrors.firstName = 'First name is required';
-      if (!formData.lastName) newErrors.lastName = 'Last name is required';
+      // Name validation
+      if (!formData.firstName?.trim()) {
+        newErrors.firstName = 'First name is required';
+      } else if (formData.firstName.trim().length < 2) {
+        newErrors.firstName = 'First name must be at least 2 characters';
+      }
+
+      if (!formData.lastName?.trim()) {
+        newErrors.lastName = 'Last name is required';
+      } else if (formData.lastName.trim().length < 2) {
+        newErrors.lastName = 'Last name must be at least 2 characters';
+      }
+
+      // Email validation
       if (!formData.email) {
         newErrors.email = 'Email is required';
-      } else if (!/\S+@\S+\.\S+/.test(formData.email)) {
-        newErrors.email = 'Please enter a valid email';
+      } else if (!isValidEmail(formData.email)) {
+        newErrors.email = 'Please enter a valid email address';
       }
+
+      // Password validation
+      if (!formData.password) {
+        newErrors.password = 'Password is required';
+      } else if (!isValidPassword(formData.password)) {
+        newErrors.password = 'Password must be at least 8 characters and include uppercase, lowercase, and numbers';
+      }
+
+      // Mobile validation
       if (!formData.mobile) {
         newErrors.mobile = 'Mobile number is required';
-      } else if (!/^\d{10}$/.test(formData.mobile)) {
+      } else if (!isValidMobile(formData.mobile)) {
         newErrors.mobile = 'Please enter a valid 10-digit mobile number';
       }
     }
 
+    // Step 2: Address Information
     if (currentStep === 2) {
-      if (!formData.address) newErrors.address = 'Address is required';
-      if (!formData.city) newErrors.city = 'City is required';
-      if (!formData.state) newErrors.state = 'State is required';
+      // Address validation
+      if (!formData.address?.trim()) {
+        newErrors.address = 'Address is required';
+      } else if (formData.address.trim().length < 10) {
+        newErrors.address = 'Please enter a complete address (minimum 10 characters)';
+      }
+
+      // City validation
+      if (!formData.city?.trim()) {
+        newErrors.city = 'City is required';
+      } else if (formData.city.trim().length < 3) {
+        newErrors.city = 'Please enter a valid city name';
+      }
+
+      // State validation
+      if (!formData.state?.trim()) {
+        newErrors.state = 'State is required';
+      } else if (formData.state.trim().length < 2) {
+        newErrors.state = 'Please enter a valid state name';
+      }
+
+      // Pincode validation
       if (!formData.pincode) {
         newErrors.pincode = 'Pincode is required';
-      } else if (!/^\d{6}$/.test(formData.pincode)) {
+      } else if (!isValidPincode(formData.pincode)) {
         newErrors.pincode = 'Please enter a valid 6-digit pincode';
       }
     }
 
+    // Step 3: Professional Information and Documents
     if (currentStep === 3) {
-      if (!formData.idType) newErrors.idType = 'Please select an ID type';
-      if (!files.governmentId && !formData.idProofFront) {
-        newErrors.governmentId = 'Government ID is required';
+      // ID Type validation
+      if (!formData.idType) {
+        newErrors.idType = 'Please select an ID type';
       }
-      if (formData.idType === 'aadhaar' && !files.governmentIdBack && !formData.idProofBack) {
-        newErrors.governmentIdBack = 'Back side of Aadhaar is required';
-      }
-      if (userType === 'advocate' && !files.degreeCertificate && !formData.lawDegree) {
-        newErrors.degreeCertificate = 'Law degree certificate is required';
-      }
-      if (userType === 'intern' && !files.studentId && !formData.studentId) {
-        newErrors.studentId = 'Student ID is required';
-      }
-    }
 
-    if (currentStep === 4) {
+      // ID Proof validation
+      if (!formData.idProofFront) {
+        newErrors.idProofFront = 'Front side of ID proof is required';
+      } else if (!validateFileSize(formData.idProofFront)) {
+        newErrors.idProofFront = 'ID proof file size should be less than 5MB';
+      } else if (!validateFileType(formData.idProofFront, ['image/jpeg', 'image/png', 'application/pdf'])) {
+        newErrors.idProofFront = 'ID proof must be in JPG, PNG, or PDF format';
+      }
+
+      if (formData.idType === 'aadhaar') {
+        if (!formData.idProofBack) {
+          newErrors.idProofBack = 'Back side of Aadhaar is required';
+        } else if (!validateFileSize(formData.idProofBack)) {
+          newErrors.idProofBack = 'ID proof back file size should be less than 5MB';
+        } else if (!validateFileType(formData.idProofBack, ['image/jpeg', 'image/png', 'application/pdf'])) {
+          newErrors.idProofBack = 'ID proof must be in JPG, PNG, or PDF format';
+        }
+      }
+
+      // Advocate specific validations
       if (userType === 'advocate') {
-        if (!formData.barCouncilId) newErrors.barCouncilId = 'Bar Council ID is required';
-        if (!formData.specialization) newErrors.specialization = 'Specialization is required';
-        if (!formData.experience) newErrors.experience = 'Experience is required';
-        if (!formData.fees) newErrors.fees = 'Consultation fees is required';
-      } else if (userType === 'intern') {
-        if (!formData.schoolName) newErrors.schoolName = 'Law school name is required';
-        if (!formData.experience) newErrors.experience = 'Current year is required';
-        if (!files.resume && !formData.resume) newErrors.resume = 'Resume/CV is required';
+        if (!formData.barCouncilId?.trim()) {
+          newErrors.barCouncilId = 'Bar Council ID is required';
+        }
+
+        if (!formData.specialization) {
+          newErrors.specialization = 'Please select your specialization';
+        }
+
+        if (!formData.experience) {
+          newErrors.experience = 'Years of experience is required';
+        } else if (isNaN(formData.experience) || formData.experience < 0) {
+          newErrors.experience = 'Please enter valid years of experience';
+        }
+
+        if (!formData.fees) {
+          newErrors.fees = 'Consultation fees is required';
+        } else if (isNaN(formData.fees) || formData.fees < 0) {
+          newErrors.fees = 'Please enter valid consultation fees';
+        }
+
+        if (!formData.lawDegree) {
+          newErrors.lawDegree = 'Law degree certificate is required';
+        } else if (!validateFileSize(formData.lawDegree)) {
+          newErrors.lawDegree = 'Law degree file size should be less than 5MB';
+        } else if (!validateFileType(formData.lawDegree, ['application/pdf'])) {
+          newErrors.lawDegree = 'Law degree must be in PDF format';
+        }
+
+        if (!formData.bio?.trim()) {
+          newErrors.bio = 'Professional bio is required';
+        } else if (formData.bio.trim().length < 100) {
+          newErrors.bio = 'Bio should be at least 100 characters';
+        }
+      }
+
+      // Intern specific validations
+      if (userType === 'intern') {
+        if (!formData.schoolName?.trim()) {
+          newErrors.schoolName = 'Law school name is required';
+        }
+
+        if (!formData.currentYear) {
+          newErrors.currentYear = 'Current year of study is required';
+        } else if (isNaN(formData.currentYear) || formData.currentYear < 1 || formData.currentYear > 5) {
+          newErrors.currentYear = 'Please enter a valid year (1-5)';
+        }
+
+        if (!formData.studentId) {
+          newErrors.studentId = 'Student ID is required';
+        } else if (!validateFileSize(formData.studentId)) {
+          newErrors.studentId = 'Student ID file size should be less than 5MB';
+        } else if (!validateFileType(formData.studentId, ['image/jpeg', 'image/png', 'application/pdf'])) {
+          newErrors.studentId = 'Student ID must be in JPG, PNG, or PDF format';
+        }
+
+        if (!formData.resume) {
+          newErrors.resume = 'Resume is required';
+        } else if (!validateFileSize(formData.resume)) {
+          newErrors.resume = 'Resume file size should be less than 5MB';
+        } else if (!validateFileType(formData.resume, ['application/pdf'])) {
+          newErrors.resume = 'Resume must be in PDF format';
+        }
+      }
+
+      // Client specific validations
+      if (userType === 'client') {
+        if (!formData.caseType) {
+          newErrors.caseType = 'Please select case type';
+        }
+
+        if (!formData.budget) {
+          newErrors.budget = 'Budget range is required';
+        } else if (isNaN(formData.budget) || formData.budget < 0) {
+          newErrors.budget = 'Please enter a valid budget amount';
+        }
+
+        if (formData.preferredLanguages?.length === 0) {
+          newErrors.preferredLanguages = 'Please select at least one preferred language';
+        }
       }
     }
 
-    console.log('Validation errors:', newErrors);
+    // Update errors state
     setErrors(newErrors);
-    return Object.keys(newErrors).length === 0;
+
+    // Show toast for validation errors
+    if (Object.keys(newErrors).length > 0) {
+      // Group similar errors
+      const errorMessages = Object.values(newErrors);
+      if (errorMessages.length > 1) {
+        toast.error(`Please fix the following issues: ${errorMessages[0]} ${errorMessages.length > 1 ? `and ${errorMessages.length - 1} more` : ''}`);
+      } else {
+        toast.error(errorMessages[0]);
+      }
+      return false;
+    }
+
+    // If no errors, show success toast for step completion
+    toast.success(`Step ${currentStep} completed successfully!`);
+    return true;
   };
 
   const nextStep = () => {
@@ -663,9 +861,9 @@ const RegistrationFlow = ({ userType, onComplete, onBack }) => {
                       className="border-2 border-dashed border-slate-300 rounded-lg p-6 text-center hover:border-blue-400 transition-colors cursor-pointer"
                       onClick={() => document.getElementById('idProofFront').click()}
                     >
-                      <Upload className="h-8 w-8 text-slate-400 mx-auto mb-2" />
+                    <Upload className="h-8 w-8 text-slate-400 mx-auto mb-2" />
                       <p className="text-sm text-slate-600">Upload Government ID (Front) *</p>
-                      <p className="text-xs text-slate-500 mt-1">JPG, PNG or PDF (Max 5MB)</p>
+                    <p className="text-xs text-slate-500 mt-1">JPG, PNG or PDF (Max 5MB)</p>
                       {formData.idProofFront && (
                         <p className="text-xs text-green-600 mt-2">✓ File uploaded: {formData.idProofFront.name}</p>
                       )}
@@ -685,9 +883,9 @@ const RegistrationFlow = ({ userType, onComplete, onBack }) => {
                         className="border-2 border-dashed border-slate-300 rounded-lg p-6 text-center hover:border-blue-400 transition-colors cursor-pointer"
                         onClick={() => document.getElementById('idProofBack').click()}
                       >
-                        <Upload className="h-8 w-8 text-slate-400 mx-auto mb-2" />
+                      <Upload className="h-8 w-8 text-slate-400 mx-auto mb-2" />
                         <p className="text-sm text-slate-600">Upload Aadhaar (Back) *</p>
-                        <p className="text-xs text-slate-500 mt-1">Numbers will be masked as per DPDP Act 2023</p>
+                      <p className="text-xs text-slate-500 mt-1">Numbers will be masked as per DPDP Act 2023</p>
                         {formData.idProofBack && (
                           <p className="text-xs text-green-600 mt-2">✓ File uploaded: {formData.idProofBack.name}</p>
                         )}
@@ -708,9 +906,9 @@ const RegistrationFlow = ({ userType, onComplete, onBack }) => {
                         className="border-2 border-dashed border-slate-300 rounded-lg p-6 text-center hover:border-blue-400 transition-colors cursor-pointer"
                         onClick={() => document.getElementById('lawDegree').click()}
                       >
-                        <Upload className="h-8 w-8 text-slate-400 mx-auto mb-2" />
+                      <Upload className="h-8 w-8 text-slate-400 mx-auto mb-2" />
                         <p className="text-sm text-slate-600">Upload Law Degree Certificate *</p>
-                        <p className="text-xs text-slate-500 mt-1">Required for advocate verification</p>
+                      <p className="text-xs text-slate-500 mt-1">Required for advocate verification</p>
                         {formData.lawDegree && (
                           <p className="text-xs text-green-600 mt-2">✓ File uploaded: {formData.lawDegree.name}</p>
                         )}
@@ -731,9 +929,9 @@ const RegistrationFlow = ({ userType, onComplete, onBack }) => {
                         className="border-2 border-dashed border-slate-300 rounded-lg p-6 text-center hover:border-blue-400 transition-colors cursor-pointer"
                         onClick={() => document.getElementById('studentId').click()}
                       >
-                        <Upload className="h-8 w-8 text-slate-400 mx-auto mb-2" />
+                      <Upload className="h-8 w-8 text-slate-400 mx-auto mb-2" />
                         <p className="text-sm text-slate-600">Upload Student ID *</p>
-                        <p className="text-xs text-slate-500 mt-1">Current law school identification</p>
+                      <p className="text-xs text-slate-500 mt-1">Current law school identification</p>
                         {formData.studentId && (
                           <p className="text-xs text-green-600 mt-2">✓ File uploaded: {formData.studentId.name}</p>
                         )}
@@ -856,9 +1054,9 @@ const RegistrationFlow = ({ userType, onComplete, onBack }) => {
                     className="border-2 border-dashed border-slate-300 rounded-lg p-6 text-center hover:border-blue-400 transition-colors cursor-pointer"
                     onClick={() => document.getElementById('resume').click()}
                   >
-                    <Upload className="h-8 w-8 text-slate-400 mx-auto mb-2" />
-                    <p className="text-sm text-slate-600">Upload Resume/CV</p>
-                    <p className="text-xs text-slate-500 mt-1">PDF format preferred</p>
+                  <Upload className="h-8 w-8 text-slate-400 mx-auto mb-2" />
+                  <p className="text-sm text-slate-600">Upload Resume/CV</p>
+                  <p className="text-xs text-slate-500 mt-1">PDF format preferred</p>
                     {formData.resume && (
                       <p className="text-xs text-green-600 mt-2">✓ File uploaded: {formData.resume.name}</p>
                     )}

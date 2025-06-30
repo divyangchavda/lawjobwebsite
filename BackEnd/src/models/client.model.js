@@ -6,45 +6,49 @@ const clientSchema = new mongoose.Schema({
     ref: 'User',
     required: true
   },
+  activeCases: [{
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Case'
+  }],
+  completedCases: [{
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Case'
+  }],
+  savedAdvocates: [{
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Advocate'
+  }],
   occupation: {
     type: String,
-    required: true,
     default: 'Not Specified'
   },
   companyName: {
     type: String,
-    required: false,
     default: ''
   },
-  caseHistory: [{
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'Case'
-  }],
   preferredLanguages: {
     type: [String],
-    enum: ['English', 'Hindi', 'Marathi', 'Gujarati', 'Bengali', 'Tamil', 'Telugu', 'Kannada', 'Malayalam'],
     default: ['English']
   },
   budget: {
     type: Number,
-    required: false,
-    default: 0,
-    min: 0
+    default: 0
   },
   preferredLocation: {
     type: String,
-    required: false
+    default: ''
   },
-  caseType: {
+  documents: [{
+    name: String,
+    url: String,
     type: String,
-    enum: ['criminal', 'civil', 'corporate', 'family', 'taxation', 'property', 'labor'],
-    default: 'civil',
-    required: false
-  }
+    uploadedAt: {
+      type: Date,
+      default: Date.now
+    }
+  }]
 }, {
   timestamps: true
 });
 
-const Client = mongoose.model('Client', clientSchema);
-
-export default Client; 
+export default mongoose.model('Client', clientSchema); 

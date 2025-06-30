@@ -7,19 +7,15 @@ const advocateSchema = new mongoose.Schema({
     ref: 'User',
     required: true
   },
-  barCouncilId: {
+  location: {
     type: String,
     required: true,
-    unique: true
-  },
-  lawDegree: {
-    type: String, // URL to uploaded document
-    required: true
+    trim: true
   },
   specialization: {
     type: String,
-    enum: ['criminal', 'civil', 'corporate', 'family', 'taxation', 'property', 'labor'],
-    required: true
+    required: true,
+    enum: ['Criminal Law', 'Civil Law', 'Corporate Law', 'Family Law', 'Property Law', 'Tax Law', 'Labor Law', 'Constitutional Law']
   },
   experience: {
     type: Number,
@@ -31,15 +27,54 @@ const advocateSchema = new mongoose.Schema({
     required: true,
     min: 0
   },
-  bio: {
-    type: String,
-    trim: true
-  },
   rating: {
     type: Number,
     default: 0,
     min: 0,
     max: 5
+  },
+  available: {
+    type: Boolean,
+    default: true
+  },
+  verified: {
+    type: Boolean,
+    default: false
+  },
+  cases: [{
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Case'
+  }],
+  courtLocations: [{
+    type: String,
+    required: true
+  }],
+  languages: [{
+    type: String,
+    required: true
+  }],
+  education: [{
+    degree: String,
+    institution: String,
+    year: Number
+  }],
+  barCouncilNumber: {
+    type: String,
+    required: true,
+    unique: true
+  },
+  description: {
+    type: String,
+    required: true,
+    maxLength: 1000
+  },
+  totalCases: {
+    type: Number,
+    default: 0
+  },
+  wonCases: {
+    type: Number,
+    default: 0
   },
   reviews: [{
     user: {
@@ -52,27 +87,12 @@ const advocateSchema = new mongoose.Schema({
       min: 1,
       max: 5
     },
-    comment: {
-      type: String,
-      trim: true
-    },
-    createdAt: {
+    comment: String,
+    date: {
       type: Date,
       default: Date.now
     }
   }],
-  cases: [{
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'Case'
-  }],
-  availability: {
-    type: Map,
-    of: [{
-      startTime: String,
-      endTime: String
-    }],
-    default: new Map()
-  },
   password: {
     type: String,
     required: true
@@ -81,9 +101,9 @@ const advocateSchema = new mongoose.Schema({
   timestamps: true
 });
 
-// Calculate average rating when a review is added
+// Calculate average rating when reviews are modified
 advocateSchema.pre('save', function(next) {
-  if (this.reviews.length > 0) {
+  if (this.reviews && this.reviews.length > 0) {
     const totalRating = this.reviews.reduce((sum, review) => sum + review.rating, 0);
     this.rating = totalRating / this.reviews.length;
   }

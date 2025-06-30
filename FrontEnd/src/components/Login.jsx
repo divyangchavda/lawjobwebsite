@@ -1,21 +1,24 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { Card } from "./ui/card";
 import { Label } from "./ui/label";
 import { Input } from "./ui/input";
 import { Button } from "./ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs";
 import { toast } from "sonner";
-import { API_ENDPOINTS } from '../config/api';
+import { useAuth } from '../contexts/AuthContext';
 
 const Login = () => {
   const navigate = useNavigate();
+  const location = useLocation();
+  const { login } = useAuth();
   const [formData, setFormData] = useState({
     email: '',
     password: '',
   });
   const [errors, setErrors] = useState({});
   const [isLoading, setIsLoading] = useState(false);
+  const [activeRole, setActiveRole] = useState('advocate');
 
   const handleInputChange = (e) => {
     const { name, value } = e.target;
@@ -43,92 +46,28 @@ const Login = () => {
     
     if (!formData.password) {
       newErrors.password = 'Password is required';
-    } else if (formData.password.length < 6) {
-      newErrors.password = 'Password must be at least 6 characters';
     }
 
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
 
-  const handleSubmit = async (e, role) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     
     if (validateForm()) {
       setIsLoading(true);
       try {
-        // First, validate the role and email combination
-        const response = await fetch(API_ENDPOINTS.LOGIN, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            email: formData.email,
-            password: formData.password,
-            role: role.toLowerCase()
-          }),
-        });
-
-        const data = await response.json();
-
-        if (!response.ok) {
-          throw new Error(data.message || 'Login failed');
-        }
-
-        // Verify that the user type matches the selected role
-        if (data.userType.toLowerCase() !== role.toLowerCase()) {
-          throw new Error(`This email is registered as a ${data.userType}. Please use the correct login tab.`);
-        }
-
-        // Store user data in localStorage
-        localStorage.setItem('token', data.token);
-        localStorage.setItem('userRole', data.userType.toLowerCase());
-        localStorage.setItem('userData', JSON.stringify({
-          id: data._id,
-          firstName: data.firstName,
-          lastName: data.lastName,
-          email: data.email
-        }));
-
-        toast.success(`Welcome back, ${data.firstName}!`);
+        const success = await login(formData.email, formData.password, activeRole);
         
-        // Navigate based on role
-        switch(data.userType.toLowerCase()) {
-          case 'advocate':
-            navigate('/dashboards/advocate');
-            break;
-          case 'client':
-            navigate('/dashboards/client');
-            break;
-          case 'intern':
-            navigate('/dashboards/intern');
-            break;
-          default:
-            navigate('/');
+        if (success) {
+          // Navigation is handled by the auth context
+          const from = location.state?.from?.pathname || `/dashboards/${activeRole}`;
+          navigate(from, { replace: true });
         }
       } catch (error) {
         console.error('Login error:', error);
-        
-        // Handle specific error cases
-        if (error.message.includes('registered as')) {
-          // Wrong role selected
-          toast.error(error.message);
-        } else if (error.message === 'Invalid credentials' || error.message.includes('Invalid email or password')) {
-          toast.error('Invalid email or password');
-          setErrors({
-            email: 'Invalid email or password',
-            password: 'Invalid email or password'
-          });
-        } else if (error.message === 'User not found') {
-          toast.error('No account found with this email');
-          setErrors({
-            email: 'No account found with this email'
-          });
-        } else {
-          // Generic error
-          toast.error('Login failed. Please try again.');
-        }
+        toast.error('Login failed. Please try again.');
       } finally {
         setIsLoading(false);
       }
@@ -138,7 +77,7 @@ const Login = () => {
   };
 
   const renderLoginForm = (role) => (
-    <form className="space-y-5 w-full" onSubmit={(e) => handleSubmit(e, role)}>
+    <form className="space-y-5 w-full" onSubmit={handleSubmit}>
       <div className="space-y-2">
         <Label htmlFor={`email-${role}`} className="text-sm font-medium text-gray-700">
           Email
@@ -208,9 +147,7 @@ const Login = () => {
         <p>Don't have an account? 
           <button 
             type="button" 
-            onClick={() => {
-              navigate('/', { state: { initialView: 'userSelection' } });
-            }} 
+            onClick={() => navigate('/', { state: { initialView: 'userSelection' } })} 
             className="ml-1 text-blue-600 hover:text-blue-700 font-medium hover:underline transition-colors duration-200"
           >
             Register here
@@ -228,7 +165,12 @@ const Login = () => {
           <p className="text-gray-500 text-lg">Sign in to your account</p>
         </div>
 
-        <Tabs defaultValue="advocate" className="w-full">
+        <Tabs 
+          defaultValue="advocate" 
+          value={activeRole}
+          onValueChange={setActiveRole}
+          className="w-full"
+        >
           <TabsList className="grid w-full grid-cols-3 gap-2 p-1 bg-gray-100/80 rounded-xl mb-6">
             <TabsTrigger 
               value="advocate" 
@@ -260,15 +202,15 @@ const Login = () => {
           </TabsList>
           
           <TabsContent value="advocate" className="mt-6 focus-visible:outline-none focus-visible:ring-0">
-            {renderLoginForm('Advocate')}
+            {renderLoginForm('advocate')}
           </TabsContent>
           
           <TabsContent value="client" className="mt-6 focus-visible:outline-none focus-visible:ring-0">
-            {renderLoginForm('Client')}
+            {renderLoginForm('client')}
           </TabsContent>
           
           <TabsContent value="intern" className="mt-6 focus-visible:outline-none focus-visible:ring-0">
-            {renderLoginForm('Intern')}
+            {renderLoginForm('intern')}
           </TabsContent>
         </Tabs>
 
