@@ -96,18 +96,97 @@ const RegistrationFlow = ({ userType, onComplete, onBack }) => {
       // Create FormData object
       const formDataObj = new FormData();
       
+      // Define user-type specific fields
+      const userFields = ['firstName', 'lastName', 'email', 'password', 'mobile', 'address', 'city', 'state', 'pincode', 'idType'];
+      const advocateFields = ['barCouncilId', 'specialization', 'experience', 'fees', 'bio'];
+      const internFields = ['schoolName', 'experience', 'specialization']; // experience maps to currentYear, specialization maps to interests
+      const clientFields = ['occupation', 'companyName', 'preferredLanguages', 'budget', 'preferredLocation', 'caseType'];
+      
       // Append all form fields directly (except files)
       Object.keys(formData).forEach(key => {
         // Skip file fields as they will be handled separately
         if (!['idProofFront', 'idProofBack', 'lawDegree', 'studentId', 'resume'].includes(key)) {
-          // Handle arrays and objects by converting to JSON string
-          if (typeof formData[key] === 'object' && formData[key] !== null) {
-            formDataObj.append(key, JSON.stringify(formData[key]));
+          // Only include relevant fields for the specific user type
+          const isUserField = userFields.includes(key);
+          const isRelevantField = (
+            (userType === 'advocate' && advocateFields.includes(key)) ||
+            (userType === 'intern' && internFields.includes(key)) ||
+            (userType === 'client' && clientFields.includes(key))
+          );
+          
+          if (!isUserField && !isRelevantField) {
+            return; // Skip irrelevant fields
+          }
+          let value = formData[key];
+          
+          // Map field names for backend compatibility
+          let fieldName = key;
+          if (key === 'barCouncilId') {
+            fieldName = 'barCouncilNumber';
+          } else if (key === 'bio') {
+            fieldName = 'description';
+          } else if (key === 'experience' && userType === 'intern') {
+            fieldName = 'currentYear';
+          } else if (key === 'specialization' && userType === 'intern') {
+            fieldName = 'interests';
+          }
+          
+          // Map specialization values for backend enum (only for advocates)
+          if (key === 'specialization' && value && userType === 'advocate') {
+            const specializationMap = {
+              'criminal': 'Criminal Law',
+              'civil': 'Civil Law',
+              'corporate': 'Corporate Law',
+              'family': 'Family Law',
+              'taxation': 'Tax Law',
+              'property': 'Property Law',
+              'labor': 'Labor Law',
+              'constitutional': 'Constitutional Law'
+            };
+            value = specializationMap[value] || value;
+          }
+          
+          // Handle intern interests (specialization becomes interests array)
+          if (key === 'specialization' && value && userType === 'intern') {
+            // For interests, append directly as a single value, not as JSON array
+            formDataObj.append('interests', value);
+            return; // Skip the normal processing
+          }
+          
+          // Convert numeric fields to numbers
+          if ((key === 'experience' || key === 'fees' || key === 'budget') && value) {
+            value = parseFloat(value);
+          }
+          
+          // Convert currentYear to integer for interns
+          if (key === 'experience' && userType === 'intern' && value) {
+            value = parseInt(value);
+          }
+          
+          // Handle arrays and objects by converting to JSON string (except interests)
+          if (typeof value === 'object' && value !== null && fieldName !== 'interests') {
+            formDataObj.append(fieldName, JSON.stringify(value));
           } else {
-            formDataObj.append(key, formData[key] || '');
+            formDataObj.append(fieldName, value || '');
           }
         }
       });
+      
+      // Add advocate-specific fields
+      if (userType === 'advocate') {
+        const location = `${formData.city}, ${formData.state}`;
+        formDataObj.append('location', location);
+        
+        // Map preferredLanguages to languages (if exists)
+        if (formData.preferredLanguages && formData.preferredLanguages.length > 0) {
+          formDataObj.append('languages', JSON.stringify(formData.preferredLanguages));
+        } else {
+          formDataObj.append('languages', JSON.stringify(['English'])); // Default
+        }
+        
+        // Set courtLocations to location for now
+        formDataObj.append('courtLocations', JSON.stringify([location]));
+      }
 
       // Add userType
       formDataObj.append('userType', userType);
@@ -140,6 +219,15 @@ const RegistrationFlow = ({ userType, onComplete, onBack }) => {
           formDataObj.append(fieldName, file);
         }
       });
+
+      // Debug: Log the FormData contents for intern
+      if (userType === 'intern') {
+        console.log('=== Intern FormData being sent ===');
+        for (let [key, value] of formDataObj.entries()) {
+          console.log(key, ':', value);
+        }
+        console.log('=== End Intern FormData ===');
+      }
 
       // Make the API call
       const response = await fetch(API_ENDPOINTS.REGISTER, {
@@ -330,7 +418,49 @@ const RegistrationFlow = ({ userType, onComplete, onBack }) => {
         }
       }
 
-      // Advocate specific validations
+      // Advocate specific validations (documents only in step 3)
+      if (userType === 'advocate') {
+        if (!formData.lawDegree) {
+          newErrors.lawDegree = 'Law degree certificate is required';
+        } else if (!validateFileSize(formData.lawDegree)) {
+          newErrors.lawDegree = 'Law degree file size should be less than 5MB';
+        } else if (!validateFileType(formData.lawDegree, ['application/pdf'])) {
+          newErrors.lawDegree = 'Law degree must be in PDF format';
+        }
+      }
+
+      // Intern specific validations (documents only in step 3)
+      if (userType === 'intern') {
+        if (!formData.studentId) {
+          newErrors.studentId = 'Student ID is required';
+        } else if (!validateFileSize(formData.studentId)) {
+          newErrors.studentId = 'Student ID file size should be less than 5MB';
+        } else if (!validateFileType(formData.studentId, ['image/jpeg', 'image/png', 'application/pdf'])) {
+          newErrors.studentId = 'Student ID must be in JPG, PNG, or PDF format';
+        }
+      }
+
+      // Client specific validations
+      if (userType === 'client') {
+        if (!formData.caseType) {
+          newErrors.caseType = 'Please select case type';
+        }
+
+        if (!formData.budget) {
+          newErrors.budget = 'Budget range is required';
+        } else if (isNaN(formData.budget) || formData.budget < 0) {
+          newErrors.budget = 'Please enter a valid budget amount';
+        }
+
+        if (formData.preferredLanguages?.length === 0) {
+          newErrors.preferredLanguages = 'Please select at least one preferred language';
+        }
+      }
+    }
+
+    // Step 4: Professional Information (for advocates and interns)
+    if (currentStep === 4) {
+      // Advocate specific professional validations
       if (userType === 'advocate') {
         if (!formData.barCouncilId?.trim()) {
           newErrors.barCouncilId = 'Bar Council ID is required';
@@ -352,14 +482,6 @@ const RegistrationFlow = ({ userType, onComplete, onBack }) => {
           newErrors.fees = 'Please enter valid consultation fees';
         }
 
-        if (!formData.lawDegree) {
-          newErrors.lawDegree = 'Law degree certificate is required';
-        } else if (!validateFileSize(formData.lawDegree)) {
-          newErrors.lawDegree = 'Law degree file size should be less than 5MB';
-        } else if (!validateFileType(formData.lawDegree, ['application/pdf'])) {
-          newErrors.lawDegree = 'Law degree must be in PDF format';
-        }
-
         if (!formData.bio?.trim()) {
           newErrors.bio = 'Professional bio is required';
         } else if (formData.bio.trim().length < 100) {
@@ -367,24 +489,16 @@ const RegistrationFlow = ({ userType, onComplete, onBack }) => {
         }
       }
 
-      // Intern specific validations
+      // Intern specific educational validations
       if (userType === 'intern') {
         if (!formData.schoolName?.trim()) {
           newErrors.schoolName = 'Law school name is required';
         }
 
-        if (!formData.currentYear) {
-          newErrors.currentYear = 'Current year of study is required';
-        } else if (isNaN(formData.currentYear) || formData.currentYear < 1 || formData.currentYear > 5) {
-          newErrors.currentYear = 'Please enter a valid year (1-5)';
-        }
-
-        if (!formData.studentId) {
-          newErrors.studentId = 'Student ID is required';
-        } else if (!validateFileSize(formData.studentId)) {
-          newErrors.studentId = 'Student ID file size should be less than 5MB';
-        } else if (!validateFileType(formData.studentId, ['image/jpeg', 'image/png', 'application/pdf'])) {
-          newErrors.studentId = 'Student ID must be in JPG, PNG, or PDF format';
+        if (!formData.experience) {
+          newErrors.experience = 'Current year of study is required';
+        } else if (isNaN(formData.experience) || formData.experience < 1 || formData.experience > 5) {
+          newErrors.experience = 'Please enter a valid year (1-5)';
         }
 
         if (!formData.resume) {
@@ -393,23 +507,6 @@ const RegistrationFlow = ({ userType, onComplete, onBack }) => {
           newErrors.resume = 'Resume file size should be less than 5MB';
         } else if (!validateFileType(formData.resume, ['application/pdf'])) {
           newErrors.resume = 'Resume must be in PDF format';
-        }
-      }
-
-      // Client specific validations
-      if (userType === 'client') {
-        if (!formData.caseType) {
-          newErrors.caseType = 'Please select case type';
-        }
-
-        if (!formData.budget) {
-          newErrors.budget = 'Budget range is required';
-        } else if (isNaN(formData.budget) || formData.budget < 0) {
-          newErrors.budget = 'Please enter a valid budget amount';
-        }
-
-        if (formData.preferredLanguages?.length === 0) {
-          newErrors.preferredLanguages = 'Please select at least one preferred language';
         }
       }
     }
@@ -951,12 +1048,14 @@ const RegistrationFlow = ({ userType, onComplete, onBack }) => {
                     value={formData.barCouncilId}
                     onChange={(e) => handleInputChange('barCouncilId', e.target.value)}
                     placeholder="Enter Bar Council registration number"
+                    className={errors.barCouncilId ? 'border-red-500' : ''}
                   />
+                  {renderError('barCouncilId')}
                 </div>
                 <div>
                   <Label htmlFor="specialization">Specialization *</Label>
                   <Select value={formData.specialization} onValueChange={(value) => handleInputChange('specialization', value)}>
-                    <SelectTrigger>
+                    <SelectTrigger className={errors.specialization ? 'border-red-500' : ''}>
                       <SelectValue placeholder="Select your specialization" />
                     </SelectTrigger>
                     <SelectContent>
@@ -967,8 +1066,10 @@ const RegistrationFlow = ({ userType, onComplete, onBack }) => {
                       <SelectItem value="taxation">Taxation</SelectItem>
                       <SelectItem value="property">Property Law</SelectItem>
                       <SelectItem value="labor">Labor Law</SelectItem>
+                      <SelectItem value="constitutional">Constitutional Law</SelectItem>
                     </SelectContent>
                   </Select>
+                  {renderError('specialization')}
                 </div>
                 <div>
                   <Label htmlFor="experience">Years of Experience *</Label>
@@ -977,7 +1078,9 @@ const RegistrationFlow = ({ userType, onComplete, onBack }) => {
                     value={formData.experience}
                     onChange={(e) => handleInputChange('experience', e.target.value)}
                     placeholder="Enter years of practice"
+                    className={errors.experience ? 'border-red-500' : ''}
                   />
+                  {renderError('experience')}
                 </div>
                 <div>
                   <Label htmlFor="fees">Consultation Fee (₹/hour) *</Label>
@@ -986,16 +1089,20 @@ const RegistrationFlow = ({ userType, onComplete, onBack }) => {
                     value={formData.fees}
                     onChange={(e) => handleInputChange('fees', e.target.value)}
                     placeholder="Enter your consultation fee"
+                    className={errors.fees ? 'border-red-500' : ''}
                   />
+                  {renderError('fees')}
                 </div>
                 <div>
-                  <Label htmlFor="bio">Professional Bio</Label>
+                  <Label htmlFor="bio">Professional Bio *</Label>
                   <Textarea
                     id="bio"
                     value={formData.bio}
                     onChange={(e) => handleInputChange('bio', e.target.value)}
-                    placeholder="Brief description of your practice and expertise"
+                    placeholder="Brief description of your practice and expertise (minimum 100 characters)"
+                    className={errors.bio ? 'border-red-500' : ''}
                   />
+                  {renderError('bio')}
                 </div>
               </div>
             )}
@@ -1009,12 +1116,14 @@ const RegistrationFlow = ({ userType, onComplete, onBack }) => {
                     value={formData.schoolName}
                     onChange={(e) => handleInputChange('schoolName', e.target.value)}
                     placeholder="Enter your law school name"
+                    className={errors.schoolName ? 'border-red-500' : ''}
                   />
+                  {renderError('schoolName')}
                 </div>
                 <div>
                   <Label htmlFor="year">Current Year of Study *</Label>
                   <Select value={formData.experience} onValueChange={(value) => handleInputChange('experience', value)}>
-                    <SelectTrigger>
+                    <SelectTrigger className={errors.experience ? 'border-red-500' : ''}>
                       <SelectValue placeholder="Select year" />
                     </SelectTrigger>
                     <SelectContent>
@@ -1025,6 +1134,7 @@ const RegistrationFlow = ({ userType, onComplete, onBack }) => {
                       <SelectItem value="5">5th Year</SelectItem>
                     </SelectContent>
                   </Select>
+                  {renderError('experience')}
                 </div>
                 <div>
                   <Label htmlFor="interests">Areas of Interest</Label>
@@ -1043,6 +1153,7 @@ const RegistrationFlow = ({ userType, onComplete, onBack }) => {
                   </Select>
                 </div>
                 <div>
+                  <Label>Upload Resume/CV *</Label>
                   <input
                     type="file"
                     id="resume"
@@ -1051,16 +1162,19 @@ const RegistrationFlow = ({ userType, onComplete, onBack }) => {
                     accept=".pdf,.doc,.docx"
                   />
                   <div 
-                    className="border-2 border-dashed border-slate-300 rounded-lg p-6 text-center hover:border-blue-400 transition-colors cursor-pointer"
+                    className={`border-2 border-dashed rounded-lg p-6 text-center hover:border-blue-400 transition-colors cursor-pointer ${
+                      errors.resume ? 'border-red-500' : 'border-slate-300'
+                    }`}
                     onClick={() => document.getElementById('resume').click()}
                   >
-                  <Upload className="h-8 w-8 text-slate-400 mx-auto mb-2" />
-                  <p className="text-sm text-slate-600">Upload Resume/CV</p>
-                  <p className="text-xs text-slate-500 mt-1">PDF format preferred</p>
+                    <Upload className={`h-8 w-8 mx-auto mb-2 ${errors.resume ? 'text-red-500' : 'text-slate-400'}`} />
+                    <p className="text-sm text-slate-600">Upload Resume/CV *</p>
+                    <p className="text-xs text-slate-500 mt-1">PDF format preferred</p>
                     {formData.resume && (
                       <p className="text-xs text-green-600 mt-2">✓ File uploaded: {formData.resume.name}</p>
                     )}
                   </div>
+                  {renderError('resume')}
                 </div>
               </div>
             )}

@@ -84,23 +84,50 @@ export const register = async (req, res, next) => {
     // Create role-specific profile
     let roleData = null;
     try {
-      if (userType.toLowerCase() === 'advocate') {
+      // Filter out user-specific fields from roleSpecificData
+      const { 
+        password: _, 
+        firstName: _f, 
+        lastName: _l, 
+        email: _e, 
+        mobile: _m, 
+        address: _a, 
+        city: _c, 
+        state: _s, 
+        pincode: _p, 
+        idType: _i, 
+        userType: _u,
+        ...cleanRoleData 
+      } = roleSpecificData;
+      
+
+              
+        // Debug logging for intern registration
+        if (userType.toLowerCase() === 'intern') {
+          console.log('=== Intern Registration Debug ===');
+          console.log('cleanRoleData:', cleanRoleData);
+          console.log('typeof cleanRoleData.interests:', typeof cleanRoleData.interests);
+          console.log('cleanRoleData.interests value:', cleanRoleData.interests);
+          console.log('=== End Intern Debug ===');
+        }
+        
+        if (userType.toLowerCase() === 'advocate') {
         roleData = await Advocate.create({
           user: user._id,
-          ...roleSpecificData,
+          ...cleanRoleData,
           lawDegree: processedFiles.lawDegree
         });
       } else if (userType.toLowerCase() === 'intern') {
         roleData = await Intern.create({
           user: user._id,
-          ...roleSpecificData,
+          ...cleanRoleData,
           studentId: processedFiles.studentId,
           resume: processedFiles.resume
         });
       } else if (userType.toLowerCase() === 'client') {
         roleData = await Client.create({
           user: user._id,
-          ...roleSpecificData
+          ...cleanRoleData
         });
       }
     } catch (error) {
