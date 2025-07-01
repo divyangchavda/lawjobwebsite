@@ -1,7 +1,7 @@
 import express from 'express';
 import multer from 'multer';
 import path from 'path';
-import { register, login, getCurrentUser } from '../controllers/auth.controller.js';
+import { register, login, getCurrentUser, logout, refreshToken } from '../controllers/auth.controller.js';
 import { protect } from '../middleware/auth.middleware.js';
 import fs from 'fs';
 
@@ -112,6 +112,8 @@ const uploadFields = upload.fields([
 // Apply upload middleware and validation
 router.post('/register', uploadFields, validateRequiredFiles, register);
 router.post('/login', login);
+router.post('/logout', logout);
+router.post('/refresh-token', refreshToken);
 router.get('/me', protect, getCurrentUser);
 
 export default router; 

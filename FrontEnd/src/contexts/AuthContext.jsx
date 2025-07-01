@@ -29,9 +29,16 @@ export const AuthProvider = ({ children }) => {
         if (response.ok) {
           const data = await response.json();
           setUser(data.user);
+        } else if (response.status === 401) {
+          // 401 is expected when no user is logged in - this is normal behavior
+          setUser(null);
+        } else {
+          // Log other unexpected errors
+          console.error('Auth initialization error:', response.status, response.statusText);
         }
       } catch (error) {
-        console.error('Auth initialization error:', error);
+        // Only log network errors or unexpected issues
+        console.error('Auth initialization network error:', error);
       } finally {
         setLoading(false);
       }
