@@ -6,6 +6,7 @@ import Profile from '../components/Profile';
 import AdvocateDashboard from '../components/dashboards/AdvocateDashboard';
 import ClientDashboard from '../components/dashboards/ClientDashboard';
 import InternDashboard from '../components/dashboards/InternDashboard';
+import CaseDetailView from '../components/CaseDetailView';
 import Unauthorized from '../pages/Unauthorized';
 import Index from '../pages/Index';
 
@@ -52,6 +53,16 @@ const AppRoutes = () => {
         element={
           <ProtectedRoute roles={['intern']}>
             <InternDashboard />
+          </ProtectedRoute>
+        }
+      />
+
+      {/* Case Detail Route */}
+      <Route
+        path="/cases/:caseId"
+        element={
+          <ProtectedRoute>
+            <CaseDetailView />
           </ProtectedRoute>
         }
       />

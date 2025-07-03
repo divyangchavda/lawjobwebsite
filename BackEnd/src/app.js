@@ -8,6 +8,7 @@ import advocateRoutes from './routes/advocate.routes.js';
 import internRoutes from './routes/intern.routes.js';
 import clientRoutes from './routes/client.routes.js';
 import appointmentRoutes from './routes/appointment.routes.js';
+import caseRoutes from './routes/case.routes.js';
 import { errorHandler } from './middleware/error.middleware.js';
 
 config();
@@ -51,6 +52,7 @@ app.use('/api/advocates', advocateRoutes);
 app.use('/api/interns', internRoutes);
 app.use('/api/clients', clientRoutes);
 app.use('/api/appointments', appointmentRoutes);
+app.use('/api/cases', caseRoutes);
 
 // Debug middleware to log all requests
 app.use((req, res, next) => {
@@ -70,6 +72,8 @@ app.listen(PORT, () => {
   console.log('- /api/advocates');
   console.log('- /api/interns');
   console.log('- /api/clients');
+  console.log('- /api/appointments');
+  console.log('- /api/cases');
 });
 
 export default app; 
