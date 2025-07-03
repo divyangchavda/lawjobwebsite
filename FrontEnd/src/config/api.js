@@ -43,6 +43,20 @@ export const API_ENDPOINTS = {
     GET_CLIENT_APPOINTMENTS: `${API_BASE_URL}/clients/appointments`,
     UPDATE_CLIENT_PROFILE: `${API_BASE_URL}/clients/profile`,
     
+    // Case endpoints
+    CREATE_CASE: `${API_BASE_URL}/cases`,
+    GET_CASES: `${API_BASE_URL}/cases`,
+    GET_CASE: (id) => `${API_BASE_URL}/cases/${id}`,
+    UPDATE_CASE: (id) => `${API_BASE_URL}/cases/${id}`,
+    DELETE_CASE: (id) => `${API_BASE_URL}/cases/${id}`,
+    ASSIGN_ADVOCATE: (id) => `${API_BASE_URL}/cases/${id}/assign`,
+    UPDATE_CASE_STATUS: (id) => `${API_BASE_URL}/cases/${id}/status`,
+    ADD_TIMELINE_UPDATE: (id) => `${API_BASE_URL}/cases/${id}/timeline`,
+    UPLOAD_CASE_DOCUMENT: (id) => `${API_BASE_URL}/cases/${id}/documents`,
+    GET_CASES_BY_CLIENT: (clientId) => `${API_BASE_URL}/cases/client/${clientId}`,
+    GET_CASES_BY_ADVOCATE: (advocateId) => `${API_BASE_URL}/cases/advocate/${advocateId}`,
+    GET_CASE_STATS: `${API_BASE_URL}/cases/stats/overview`,
+    
     // Booking endpoints
     CREATE_BOOKING: `${API_BASE_URL}/appointments`,
     GET_BOOKINGS: (userId) => `${API_BASE_URL}/bookings/user/${userId}`,
